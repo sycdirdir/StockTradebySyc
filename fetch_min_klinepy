@@ -39,21 +39,6 @@ BAN_PATTERNS = (
     "max retries exceeded"
 )
 
-VALID_FREQS = {"D", "W", "M", "1MIN", "5MIN", "15MIN", "30MIN", "60MIN"}
-
-
-def _normalize_freq(freq: str) -> str:
-    freq_raw = str(freq or "D").strip().upper()
-    if freq_raw not in VALID_FREQS:
-        raise ValueError(
-            "不支持的 freq，允许值：D/W/M/1MIN/5MIN/15MIN/30MIN/60MIN"
-        )
-    return freq_raw
-
-
-def _freq_folder_name(freq: str) -> str:
-    return _normalize_freq(freq).lower()
-
 def _looks_like_ip_ban(exc: Exception) -> bool:
     msg = (str(exc) or "").lower()
     return any(pat in msg for pat in BAN_PATTERNS)
@@ -87,16 +72,15 @@ def _to_ts_code(code: str) -> str:
     else:
         return f"{code}.SZ"
 
-def _get_kline_tushare(code: str, start: str, end: str, freq: str) -> pd.DataFrame:
+def _get_kline_tushare(code: str, start: str, end: str) -> pd.DataFrame:
     ts_code = _to_ts_code(code)
-    freq = _normalize_freq(freq)
     try:
         df = ts.pro_bar(
             ts_code=ts_code,
             adj="qfq",
             start_date=start,
             end_date=end,
-            freq=freq,
+            freq="30min",
             api=pro
         )
     except Exception as e:
@@ -161,14 +145,13 @@ def fetch_one(
     code: str,
     start: str,
     end: str,
-    freq: str,
     out_dir: Path,
 ):
     csv_path = out_dir / f"{code}.csv"
 
     for attempt in range(1, 4):
         try:
-            new_df = _get_kline_tushare(code, start, end, freq)
+            new_df = _get_kline_tushare(code, start, end)
             if new_df.empty:
                 logger.debug("%s 无数据，生成空表。", code)
                 new_df = pd.DataFrame(columns=["date", "open", "close", "high", "low", "volume"])
@@ -188,15 +171,10 @@ def fetch_one(
 
 # --------------------------- 主入口 --------------------------- #
 def main():
-    parser = argparse.ArgumentParser(description="从 stocklist.csv 读取股票池并用 Tushare 抓取K线（固定qfq，全量覆盖）")
+    parser = argparse.ArgumentParser(description="从 stocklist.csv 读取股票池并用 Tushare 抓取日线K线（固定qfq，全量覆盖）")
     # 抓取范围
     parser.add_argument("--start", default="20190101", help="起始日期 YYYYMMDD 或 'today'")
     parser.add_argument("--end", default="today", help="结束日期 YYYYMMDD 或 'today'")
-    parser.add_argument(
-        "--freq",
-        default="D",
-        help="周期：D/W/M/1min/5min/15min/30min/60min（默认D）",
-    )
     # 股票清单与板块过滤
     parser.add_argument("--stocklist", type=Path, default=Path("./stocklist.csv"), help="股票清单CSV路径（需含 ts_code 或 symbol）")
     parser.add_argument(
@@ -225,10 +203,8 @@ def main():
     # ---------- 日期解析 ---------- #
     start = dt.date.today().strftime("%Y%m%d") if str(args.start).lower() == "today" else args.start
     end = dt.date.today().strftime("%Y%m%d") if str(args.end).lower() == "today" else args.end
-    freq = _normalize_freq(args.freq)
-    freq_folder = _freq_folder_name(freq)
 
-    out_dir = Path(args.out) / freq_folder
+    out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # ---------- 从 stocklist.csv 读取股票池 ---------- #
@@ -240,8 +216,8 @@ def main():
         sys.exit(1)
 
     logger.info(
-        "开始抓取 %d 支股票 | 数据源:Tushare(%s,qfq) | 日期:%s → %s | 排除:%s | 输出:%s",
-        len(codes), freq, start, end, ",".join(sorted(exclude_boards)) or "无", out_dir,
+        "开始抓取 %d 支股票 | 数据源:Tushare(日线,qfq) | 日期:%s → %s | 排除:%s",
+        len(codes), start, end, ",".join(sorted(exclude_boards)) or "无",
     )
 
     # ---------- 多线程抓取（全量覆盖） ---------- #
@@ -252,7 +228,6 @@ def main():
                 code,
                 start,
                 end,
-                freq,
                 out_dir,
             )
             for code in codes

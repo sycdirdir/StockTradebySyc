@@ -1,4 +1,4 @@
-#S哥战法的 Python 实现（更新版）
+# Z哥战法的 Python 实现（更新版）
 
 > **更新时间：2025-12-26** –
 >
@@ -14,7 +14,7 @@
   * [环境与依赖](#环境与依赖)
   * [准备 Tushare Token](#准备-tushare-token)
   * [准备 stocklist.csv](#准备-stocklistcsv)
-  * [下载历史 K 线（qfq，日线）](#下载历史-k-线qfq日线)
+  * [下载历史 K 线（qfq，多周期）](#下载历史-k-线qfq多周期)
   * [运行选股](#运行选股)
 * [参数说明](#参数说明)
 
@@ -23,7 +23,7 @@
 * [统一当日过滤 & 知行约束](#统一当日过滤--知行约束)
 * [内置策略（Selector）](#内置策略selector)
 
-  * [1. BBIKDJSelector（少妇战法）](#1-bbikdjselector少妇战法)
+  * [1. BBIKDJSelector（kdj战法）](#1-bbikdjselectorkdj战法)
   * [2. SuperB1Selector（SuperB1战法）](#2-superb1selectorsuperb1战法)
   * [3. BBIShortLongSelector（补票战法）](#3-bbishortlongselector补票战法)
   * [4. PeakKDJSelector（填坑战法）](#4-peakkdjselector填坑战法)
@@ -40,7 +40,7 @@
 
 | 名称                    | 功能简介                                                                                                                                                                               |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`fetch_kline.py`**  | 仅使用 **Tushare** 抓取 **A 股日线（前复权 qfq）**。**股票池从 `stocklist.csv` 读取**，支持排除 **创业板/科创板/北交所**，并发抓取，**每次运行全量覆盖保存**（不做增量合并），输出 CSV 列：`date, open, close, high, low, volume`。 |
+| **`fetch_kline.py`**  | 仅使用 **Tushare** 抓取 **A 股K线（前复权 qfq）**，支持 `D/W/M/1min/5min/15min/30min/60min`。**股票池从 `stocklist.csv` 读取**，支持排除 **创业板/科创板/北交所**，并发抓取，**每次运行全量覆盖保存**（不做增量合并），输出 CSV 列：`date, open, close, high, low, volume`。 |
 | **`select_stock.py`** | 加载 `./data` 目录内 CSV 行情与 `configs.json`，批量执行选择器（Selector）并输出结果到控制台与 `select_results.log`。                                                                                           |
 | **`Selector.py`**     | 实现各类战法（选择器）。**已删除 TePu 战法**；现包含 5 个策略，统一纳入“当日过滤 & 知行约束”。                                                                                                                           |
 
@@ -76,32 +76,35 @@ setx TUSHARE_TOKEN "你的token"
 export TUSHARE_TOKEN=你的token
 ```
 
-### 下载历史 K 线（qfq，日线）
+### 下载历史 K 线（qfq，多周期）
 
 ```bash
 python fetch_kline.py \
   --start 20240101 \
   --end today \
+  --freq 30min \
   --stocklist ./stocklist.csv \
   --exclude-boards gem star bj \
   --out ./data \
   --workers 6
 ```
 
-* **数据源固定**：Tushare 日线，**前复权 qfq**。
-* **保存策略**：每只股票**全量覆盖写入** `./data/XXXXXX.csv`。
+* **数据源固定**：Tushare K 线，**前复权 qfq**；支持周期：`D/W/M/1min/5min/15min/30min/60min`。
+* **保存策略**：每只股票**全量覆盖写入** `./data/<freq>/XXXXXX.csv`（如 `./data/30min/000001.csv`）。
 * **并发抓取**：默认 6 线程；支持封禁冷却（命中「访问频繁/429/403…」将睡眠约 600s 并重试，最多 3 次）。
 
 ### 运行选股
 
 ```bash
 python select_stock.py \
-  --data-dir ./data \
+  --data-dir ./data/30min \
   --config ./configs.json \
   --date 2025-09-10
 ```
 
 > `--date` 可省略，默认取数据中的最后交易日。
+>
+> 若抓取日线（`--freq D`），通常使用 `--data-dir ./data/d`。
 
 ---
 
@@ -113,9 +116,10 @@ python select_stock.py \
 | ------------------ | ----------------- | -------------------------------------------------------------------------- |
 | `--start`          | `20190101`        | 起始日期，格式 `YYYYMMDD` 或 `today`                                               |
 | `--end`            | `today`           | 结束日期，格式同上                                                                  |
+| `--freq`           | `D`               | K线周期：`D/W/M/1min/5min/15min/30min/60min`                                     |
 | `--stocklist`      | `./stocklist.csv` | 股票清单 CSV 路径（含 `ts_code` 或 `symbol`）                                        |
 | `--exclude-boards` | `[]`              | 排除板块，枚举：`gem`(创业板 300/301) / `star`(科创板 688) / `bj`(北交所 .BJ / 4/8 开头)。可多选。 |
-| `--out`            | `./data`          | 输出目录（自动创建）                                                                 |
+| `--out`            | `./data`          | 输出根目录（自动创建 `./data/<freq>/` 子目录）                                      |
 | `--workers`        | `6`               | 并发线程数                                                                      |
 
 **输出 CSV 列**：`date, open, close, high, low, volume`（按日期升序）。
@@ -136,7 +140,7 @@ python select_stock.py \
 
 > **提示**：文中“窗口”均指交易日数量。实际实现均已替换为最新代码逻辑。
 
-### 1. BBIKDJSelector（少妇战法）
+### 1. BBIKDJSelector（KDJ战法）
 
 核心逻辑：
 
@@ -152,7 +156,7 @@ python select_stock.py \
 ```json
 {
   "class": "BBIKDJSelector",
-  "alias": "少妇战法",
+  "alias": "KDJ战法",
   "activate": true,
   "params": {
     "j_threshold": 15,
@@ -352,11 +356,11 @@ python select_stock.py \
 ```
 .
 ├── configs.json             # 选择器参数（示例见上文）
-├── fetch_kline.py           # 从 stocklist.csv 读取并抓取 Tushare 日线（qfq）
+├── fetch_kline.py           # 从 stocklist.csv 读取并抓取 Tushare K 线（qfq，多周期）
 ├── select_stock.py          # 批量选股入口
 ├── Selector.py              # 策略实现（含公共指标/过滤）
 ├── stocklist.csv            # 你的股票池（示例列：ts_code/symbol/...）
-├── data/                    # 行情 CSV 输出目录
+├── data/                    # 行情 CSV 输出根目录（按周期分子目录：d/5min/30min...）
 ├── fetch.log                # 抓取日志
 └── select_results.log       # 选股日志
 ```
