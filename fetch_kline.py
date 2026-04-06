@@ -16,6 +16,9 @@ import pandas as pd
 import tushare as ts
 from tqdm import tqdm
 
+# 导入配置（会自动加载 .env 文件）
+from config import TUSHARE_TOKEN
+
 warnings.filterwarnings("ignore")
 
 # --------------------------- 全局日志配置 --------------------------- #
@@ -215,9 +218,9 @@ def main():
 
     os.environ["NO_PROXY"] = "api.waditu.com,.waditu.com,waditu.com"
     os.environ["no_proxy"] = os.environ["NO_PROXY"]
-    ts_token = os.environ.get("TUSHARE_TOKEN")
-    if not ts_token:
-        raise ValueError("请先设置环境变量 TUSHARE_TOKEN，例如：export TUSHARE_TOKEN=你的token")
+
+    # 使用从 config.py 导入的 TUSHARE_TOKEN（支持 .env 文件或环境变量）
+    ts_token = TUSHARE_TOKEN
     ts.set_token(ts_token)
     global pro
     pro = ts.pro_api()

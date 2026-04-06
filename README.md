@@ -64,16 +64,38 @@ pip install -r requirements.txt
 
 > 关键依赖：`pandas`, `tqdm`, `tushare`, `numpy`, `scipy`。
 
-### 准备 Tushare Token
+### 准备配置文件
 
-1. 在系统环境中写入 `TUSHARE_TOKEN`：
+项目使用 `.env` 文件管理敏感配置（API Token、Webhook Key 等）。
+
+1. 复制配置模板：
 
 ```bash
-# Windows (PowerShell)
-setx TUSHARE_TOKEN "你的token"
+cp .env.example .env
+```
 
+2. 编辑 `.env` 文件，填入你的实际配置：
+
+```bash
+# Tushare Token（从 https://tushare.pro/ 获取）
+TUSHARE_TOKEN=your_tushare_token_here
+
+# 企业微信机器人 Webhook Key（可选）
+QYWX_WEBHOOK_KEY=your_qywx_webhook_key_here
+```
+
+> **注意**：`.env` 文件已被添加到 `.gitignore`，不会被提交到 Git，请放心使用。
+
+**替代方案**：你也可以直接设置环境变量：
+
+```bash
 # macOS / Linux (bash)
-export TUSHARE_TOKEN=你的token
+export TUSHARE_TOKEN=your_token
+export QYWX_WEBHOOK_KEY=your_key
+
+# Windows (PowerShell)
+$env:TUSHARE_TOKEN="your_token"
+$env:QYWX_WEBHOOK_KEY="your_key"
 ```
 
 ### 下载历史 K 线（qfq，多周期）
