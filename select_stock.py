@@ -1,12 +1,14 @@
 """
 优化版选股程序 - 支持并行加载、数据缓存、策略并行执行
+支持 PostgreSQL 数据源
 
 优化点：
 1. 并行数据加载 - 使用多进程加速 CSV 读取
 2. 数据缓存 - 基于文件哈希的内存缓存，避免重复读取
 3. 指标预计算 - 缓存通用指标避免重复计算
 4. 策略并行执行 - 多线程并行运行多个策略
-5. 性能计时 - 详细的性能分析日志
+5. PostgreSQL 支持 - 从数据库直接读取数据
+6. 性能计时 - 详细的性能分析日志
 """
 from __future__ import annotations
 
@@ -34,6 +36,15 @@ except ImportError:
     def compute_bbi(df): return df["close"].rolling(24).mean()
     def compute_dif(df): return df["close"].diff()
     def compute_zx_lines(df): return (df["close"], df["close"])
+
+# 导入 PostgreSQL 数据加载器
+try:
+    from db_loader import load_data_from_postgres, PostgresLoader
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("PostgreSQL 支持未启用，请安装 psycopg2")
 
 # ---------- 日志配置 ----------
 logging.basicConfig(
@@ -274,6 +285,10 @@ def main():
     p.add_argument("--no-cache", action="store_true", help="禁用数据缓存")
     p.add_argument("--clear-cache", action="store_true", help="清除缓存后运行")
     p.add_argument("--precompute", action="store_true", help="预计算常用指标")
+    # PostgreSQL 相关参数
+    p.add_argument("--postgres", action="store_true", help="使用 PostgreSQL 数据源")
+    p.add_argument("--pg-table", default="daily", help="PostgreSQL 表名 (daily/stock_weekly/stock_monthly)")
+    p.add_argument("--pg-start", default="20240101", help="PostgreSQL 数据开始日期 (YYYYMMDD)")
     args = p.parse_args()
     
     # 清除缓存
@@ -281,21 +296,52 @@ def main():
         DataCache.clear()
     
     # --- 加载行情 ---
-    data_dir = Path(args.data_dir)
-    if not data_dir.exists():
-        logger.error("数据目录 %s 不存在", data_dir)
-        sys.exit(1)
-    
-    codes = (
-        [f.stem for f in data_dir.glob("*.csv")]
-        if args.tickers.lower() == "all"
-        else [c.strip() for c in args.tickers.split(",") if c.strip()]
-    )
-    if not codes:
-        logger.error("股票池为空！")
-        sys.exit(1)
-    
-    # 并行加载数据（带缓存）
+    if args.postgres:
+        # 使用 PostgreSQL 数据源
+        if not POSTGRES_AVAILABLE:
+            logger.error("PostgreSQL 支持未启用，请安装 psycopg2: pip install psycopg2-binary")
+            sys.exit(1)
+        
+        logger.info("使用 PostgreSQL 数据源，表: %s", args.pg_table)
+        
+        if args.tickers.lower() == "all":
+            # 加载所有股票
+            data = load_data_from_postgres(
+                start_date=args.pg_start,
+                table=args.pg_table
+            )
+        else:
+            # 加载指定股票
+            codes = [c.strip() for c in args.tickers.split(",") if c.strip()]
+            data = load_data_from_postgres(
+                codes=codes,
+                start_date=args.pg_start,
+                table=args.pg_table
+            )
+        
+        if not data:
+            logger.error("未能从 PostgreSQL 加载任何数据")
+            sys.exit(1)
+        
+        logger.info("从 PostgreSQL 加载了 %d 只股票的数据", len(data))
+        
+    else:
+        # 使用 CSV 数据源
+        data_dir = Path(args.data_dir)
+        if not data_dir.exists():
+            logger.error("数据目录 %s 不存在", data_dir)
+            sys.exit(1)
+        
+        codes = (
+            [f.stem for f in data_dir.glob("*.csv")]
+            if args.tickers.lower() == "all"
+            else [c.strip() for c in args.tickers.split(",") if c.strip()]
+        )
+        if not codes:
+            logger.error("股票池为空！")
+            sys.exit(1)
+        
+        # 并行加载数据（带缓存）
     data = load_data_parallel(
         data_dir, 
         codes, 
@@ -347,17 +393,6 @@ def main():
         logger.info("")
         logger.info("============== 选股结果 [%s] ==============", alias)
         logger.info("交易日: %s", trade_date.date())
-        logger.info("符合条件股票数: %d", len(picks))
-        logger.info("%s", ", ".join(picks) if picks else "无符合条件股票")
-    
-    # 输出性能统计
-    logger.info("")
-    logger.info("============== 性能统计 ==============")
-    logger.info("股票总数: %d", len(data))
-    logger.info("策略总数: %d", len(results))
-    logger.info("总耗时: %.3fs", elapsed)
-
 
 if __name__ == "__main__":
-    main()="./data", help="CSV 行情目录")
-    p.add_argument("--config", default
+    main()

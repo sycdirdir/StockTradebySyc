@@ -38,11 +38,7 @@
 
 ## 项目简介
 
-| 名称                    | 功能简介                                                                                                                                                                               |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`fetch_kline.py`**  | 仅使用 **Tushare** 抓取 **A 股K线(前复权 qfq)**,支持 `D/W/M/1min/5min/15min/30min/60min`。**股票池从 `stocklist.csv` 读取**,支持排除 **创业板/科创板/北交所**,并发抓取,**每次运行全量覆盖保存**(不做增量合并),输出 CSV 列:`date, open, close, high, low, volume`。 |
-| **`select_stock.py`** | 加载 `./data` 目录内 CSV 行情与 `configs.json`,批量执行选择器(Selector)并输出结果到控制台与 `select_results.log`。                                                                                           |
-| **`Selector.py`**     | 实现各类战法(选择器)。**已删除 TePu 战法**;现包含 5 个策略,统一纳入"当日过滤 & 知行约束"。                                                                                                                           |
+| 名称                    | 功能简介
 
 ---
 
@@ -502,13 +498,22 @@ crontab -e
 ├── .env.example             # 配置模板(可提交Git)
 ├── config.py                # 配置管理模块
 ├── configs.json             # 选择器参数(示例见上文)
+├── configs.yaml             # YAML 格式配置示例
 ├── fetch_kline.py           # 从 stocklist.csv 读取并抓取 Tushare K 线(qfq,多周期)
 ├── fetch_min_klinepy        # 分钟级数据抓取
-├── select_stock.py          # 批量选股入口
+├── select_stock.py          # 批量选股入口(支持 CSV 和 PostgreSQL)
 ├── Selector.py              # 策略实现(含公共指标/过滤)
 ├── send_qywx.py             # 企业微信通知模块
+├── benchmark.py             # 性能测试脚本
+├── config.py                # 配置管理模块
+├── db_config.py             # 数据库配置
+├── db_loader.py             # PostgreSQL 数据加载器
+├── sync_data.py             # 数据同步到 PostgreSQL
+├── calculate_4line.py       # 4Line 指标计算
+├── daily_job.py             # 每日自动同步任务
 ├── stocklist.csv            # 你的股票池(示例列:ts_code/symbol/...)
 ├── data/                    # 行情 CSV 输出根目录(按周期分子目录:d/5min/30min...)
+├── .cache/                  # 数据缓存目录
 ├── fetch.log                # 抓取日志
 └── select_results.log       # 选股日志
 ```
@@ -540,6 +545,86 @@ crontab -e
    ```bash
    python -c "from config import TUSHARE_TOKEN; print('Token loaded:', bool(TUSHARE_TOKEN))"
    ```
+
+---
+
+## PostgreSQL 数据源支持
+
+项目现已支持直接从 PostgreSQL 数据库读取数据，无需下载 CSV 文件。
+
+### 新增功能
+
+| 文件 | 功能 |
+|------|------|
+| `db_config.py` | 数据库配置管理 |
+| `db_loader.py` | PostgreSQL 数据加载器 |
+| `sync_data.py` | 从 Tushare 同步数据到 PostgreSQL |
+| `calculate_4line.py` | 计算 4Line 指标 (AH/AL/NH/NL) |
+| `daily_job.py` | 每日自动同步任务 |
+
+### 使用方法
+
+#### 1. 从 PostgreSQL 运行选股
+
+```bash
+# 使用 PostgreSQL 数据源（日线）
+python select_stock.py --postgres --pg-table daily --pg-start 20240101
+
+# 使用周线数据
+python select_stock.py --postgres --pg-table stock_weekly
+
+# 指定股票代码
+python select_stock.py --postgres --tickers 000001,000002,600000
+```
+
+#### 2. 同步数据到 PostgreSQL
+
+```bash
+# 同步日线数据
+python sync_data.py --daily
+
+# 同步周线/月线数据
+python sync_data.py --weekly-monthly
+
+# 同步所有数据
+python sync_data.py --all
+```
+
+#### 3. 计算 4Line 指标
+
+```bash
+# 计算所有表的 4Line 指标
+python calculate_4line.py
+
+# 使用 SQL 窗口函数（更快）
+python calculate_4line.py
+
+# 使用 Python 逐股计算（更稳定）
+python calculate_4line.py --python
+```
+
+#### 4. 每日自动任务
+
+```bash
+# 手动运行
+python daily_job.py
+
+# 添加到 crontab（每个交易日 17:00 运行）
+0 17 * * 1-5 cd /path/to/project && python daily_job.py >> /var/log/daily_job.log 2>&1
+```
+
+### 数据库配置
+
+编辑 `.env` 文件配置数据库连接：
+
+```bash
+# PostgreSQL 配置（可选，默认使用本地 socket）
+PGHOST=/var/run/postgresql
+PGPORT=12335
+PGDATABASE=tushare
+PGUSER=postgres
+PGPASSWORD=your_password
+```
 
 ---
 
