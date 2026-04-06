@@ -4,6 +4,14 @@ from scipy.signal import find_peaks
 import numpy as np
 import pandas as pd
 
+# 导入数据库配置
+try:
+    from db_config import get_db_config
+    import psycopg2
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
+
 # --------------------------- 通用指标 --------------------------- #
 
 def compute_kdj(df: pd.DataFrame, n: int = 9) -> pd.DataFrame:
@@ -54,6 +62,106 @@ def compute_dif(df: pd.DataFrame, fast: int = 12, slow: int = 26) -> pd.Series:
     ema_fast = df["close"].ewm(span=fast, adjust=False).mean()
     ema_slow = df["close"].ewm(span=slow, adjust=False).mean()
     return ema_fast - ema_slow
+
+
+def compute_zx_lines(df: pd.DataFrame) -> tuple:
+    """
+    计算知行线 (ZXDQ, ZXDKX)
+    简化实现，返回两条线
+    """
+    close = df["close"]
+    # 短期线（5日EMA）
+    zxdq = close.ewm(span=5, adjust=False).mean()
+    # 长期线（20日EMA）
+    zxdkx = close.ewm(span=20, adjust=False).mean()
+    return zxdq, zxdkx
+
+
+# --------------------------- TargetList 数据库操作 --------------------------- #
+
+def get_target_list_from_db(use_active_only: bool = True) -> List[str]:
+    """
+    从 PostgreSQL TargetList 表获取股票代码列表
+    
+    Args:
+        use_active_only: 是否只获取 is_active=True 的股票
+    
+    Returns:
+        股票代码列表（ts_code 格式，如 ['000001.SZ', '000002.SZ']）
+    """
+    if not POSTGRES_AVAILABLE:
+        raise ImportError("PostgreSQL 支持未启用，请安装 psycopg2")
+    
+    db_config = get_db_config()
+    conn = psycopg2.connect(**db_config)
+    
+    try:
+        with conn.cursor() as cur:
+            if use_active_only:
+                cur.execute("SELECT ts_code FROM TargetList WHERE is_active = TRUE ORDER BY ts_code")
+            else:
+                cur.execute("SELECT ts_code FROM TargetList ORDER BY ts_code")
+            
+            return [row[0] for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_target_list_symbols_from_db(use_active_only: bool = True) -> List[str]:
+    """
+    从 PostgreSQL TargetList 表获取股票代码列表（纯数字格式）
+    
+    Args:
+        use_active_only: 是否只获取 is_active=True 的股票
+    
+    Returns:
+        股票代码列表（symbol 格式，如 ['000001', '000002']）
+    """
+    if not POSTGRES_AVAILABLE:
+        raise ImportError("PostgreSQL 支持未启用，请安装 psycopg2")
+    
+    db_config = get_db_config()
+    conn = psycopg2.connect(**db_config)
+    
+    try:
+        with conn.cursor() as cur:
+            if use_active_only:
+                cur.execute("SELECT symbol FROM TargetList WHERE is_active = TRUE ORDER BY symbol")
+            else:
+                cur.execute("SELECT symbol FROM TargetList ORDER BY symbol")
+            
+            return [row[0] for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def update_target_list_status(ts_code: str, is_active: bool) -> bool:
+    """
+    更新 TargetList 中股票的启用状态
+    
+    Args:
+        ts_code: 股票代码（带后缀，如 '000001.SZ'）
+        is_active: 是否启用
+    
+    Returns:
+        是否更新成功
+    """
+    if not POSTGRES_AVAILABLE:
+        raise ImportError("PostgreSQL 支持未启用，请安装 psycopg2")
+    
+    db_config = get_db_config()
+    conn = psycopg2.connect(**db_config)
+    
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE TargetList SET is_active = %s, updated_at = CURRENT_TIMESTAMP WHERE ts_code = %s",
+                (is_active, ts_code)
+            )
+            conn.commit()
+            return cur.rowcount > 0
+    finally:
+        conn.close()
 
 
 def bbi_deriv_uptrend(

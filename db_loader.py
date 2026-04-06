@@ -27,6 +27,29 @@ class PostgresLoader:
         """获取数据库连接"""
         return psycopg2.connect(**self.db_config)
     
+    def get_target_list(self, use_active_only: bool = True) -> List[str]:
+        """
+        从 TargetList 表获取股票代码列表
+        
+        Args:
+            use_active_only: 是否只获取 is_active=True 的股票
+        
+        Returns:
+            股票代码列表（ts_code 格式）
+        """
+        conn = self._get_connection()
+        
+        try:
+            with conn.cursor() as cur:
+                if use_active_only:
+                    cur.execute("SELECT ts_code FROM TargetList WHERE is_active = TRUE ORDER BY ts_code")
+                else:
+                    cur.execute("SELECT ts_code FROM TargetList ORDER BY ts_code")
+                
+                return [row[0] for row in cur.fetchall()]
+        finally:
+            conn.close()
+    
     def load_stock_data(
         self,
         ts_codes: List[str],

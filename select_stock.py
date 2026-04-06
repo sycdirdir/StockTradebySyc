@@ -289,6 +289,9 @@ def main():
     p.add_argument("--postgres", action="store_true", help="使用 PostgreSQL 数据源")
     p.add_argument("--pg-table", default="daily", help="PostgreSQL 表名 (daily/stock_weekly/stock_monthly)")
     p.add_argument("--pg-start", default="20240101", help="PostgreSQL 数据开始日期 (YYYYMMDD)")
+    # TargetList 相关参数
+    p.add_argument("--use-targetlist-db", action="store_true", help="从数据库 TargetList 表读取股票列表")
+    p.add_argument("--targetlist-active-only", action="store_true", default=True, help="只读取启用的股票")
     args = p.parse_args()
     
     # 清除缓存
