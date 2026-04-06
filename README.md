@@ -513,6 +513,11 @@ crontab -e
 ├── daily_job.py             # 每日自动同步任务
 ├── stocklist.csv            # 你的股票池(示例列:ts_code/symbol/...)
 ├── data/                    # 行情 CSV 输出根目录(按周期分子目录:d/5min/30min...)
+├── database/                # 数据库脚本目录
+│   ├── schema.sql           # 数据库创建脚本
+│   ├── backup.sh            # 数据库备份脚本
+│   ├── restore.sh           # 数据库恢复脚本
+│   └── backups/             # 备份文件存放目录
 ├── .cache/                  # 数据缓存目录
 ├── fetch.log                # 抓取日志
 └── select_results.log       # 选股日志
@@ -613,6 +618,21 @@ python daily_job.py
 0 17 * * 1-5 cd /path/to/project && python daily_job.py >> /var/log/daily_job.log 2>&1
 ```
 
+#### 5. 数据库管理
+
+```bash
+# 创建数据库（首次使用）
+cd database
+psql -U postgres -f schema.sql
+
+# 备份数据库
+./backup.sh                    # 备份到默认目录
+./backup.sh /path/to/backup    # 备份到指定目录
+
+# 恢复数据库
+./restore.sh backups/tushare_backup_20260406_213011.sql.gz
+```
+
 ### 数据库配置
 
 编辑 `.env` 文件配置数据库连接：
@@ -624,6 +644,40 @@ PGPORT=12335
 PGDATABASE=tushare
 PGUSER=postgres
 PGPASSWORD=your_password
+```
+
+---
+
+## 数据库说明
+
+### 表结构
+
+| 表名 | 说明 | 字段 |
+|------|------|------|
+| `stock_basic` | 股票基础信息 | ts_code, symbol, name, industry, list_date... |
+| `daily` | 日线数据 | ts_code, trade_date, open/high/low/close, vol, amount, ah/al/nh/nl... |
+| `stock_weekly` | 周线数据 | 同上 |
+| `stock_monthly` | 月线数据 | 同上 |
+| `stock_1min/5min/30min/60min` | 分钟线数据 | ts_code, trade_time, open/high/low/close... |
+| `index_basic` | 指数基础信息 | ts_code, name, market... |
+| `index_daily/week/month` | 指数数据 | ts_code, trade_date, close... |
+
+### 4Line 指标字段
+
+- `ah` - AH: 最高突破价 (Average High)
+- `al` - AL: 最低支撑价 (Average Low)
+- `nh` - NH: 近高突破价 (Near High)
+- `nl` - NL: 近低支撑价 (Near Low)
+
+计算公式：
+```
+N = 3
+PT = REF(HIGH,1) - REF(LOW,1)
+CDP = (HIGH + LOW + CLOSE) / 3
+AH = MA(CDP + PT, N)
+AL = MA(CDP - PT, N)
+NH = MA(2*CDP - LOW, N)
+NL = MA(2*CDP - HIGH, N)
 ```
 
 ---
