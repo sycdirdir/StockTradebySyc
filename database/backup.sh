@@ -57,6 +57,19 @@ check_database() {
         exit 1
     fi
     log_info "数据库 ${DB_NAME} 存在"
+    
+    # 显示主要表统计
+    log_info "数据库表统计:"
+    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -c "
+SELECT 
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
+FROM pg_tables 
+WHERE schemaname='public' 
+AND tablename IN ('daily', 'stock_weekly', 'stock_monthly', 'stock_basic', 'TargetList', 'index_daily')
+ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+" 2>/dev/null || true
 }
 
 # 执行备份

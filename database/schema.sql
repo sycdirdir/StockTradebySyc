@@ -198,28 +198,27 @@ CREATE TABLE IF NOT EXISTS index_basic (
     name VARCHAR(50),
     fullname VARCHAR(100),
     market VARCHAR(10),
-    publisher VARCHAR(50),
-    index_type VARCHAR(20),
-    category VARCHAR(20),
-    base_date VARCHAR(8),
-    base_point NUMERIC(10,2),
-    list_date VARCHAR(8),
-    weight_rule VARCHAR(50),
-    desc TEXT,
-    update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 -- ============================================
--- 7. 指数日线数据表
+-- 8. TargetList 选股目标表
 -- ============================================
-CREATE TABLE IF NOT EXISTS index_daily (
+CREATE TABLE IF NOT EXISTS TargetList (
     id SERIAL PRIMARY KEY,
-    ts_code VARCHAR(20) NOT NULL,
-    trade_date VARCHAR(8) NOT NULL,
-    close NUMERIC(10,2),
-    open NUMERIC(10,2),
-    high NUMERIC(10,2),
-    low NUMERIC(10,2),
-    pre_close NUMERIC(10,2),
-    change NUMERIC(10,2),
-    pct_chg NUMERIC
+    ts_code VARCHAR(20) NOT NULL UNIQUE,    -- 股票代码（带后缀）
+    symbol VARCHAR(10) NOT NULL,            -- 股票代码（纯数字）
+    name VARCHAR(50),                       -- 股票名称
+    area VARCHAR(50),                       -- 地区
+    industry VARCHAR(50),                   -- 行业
+    is_active BOOLEAN DEFAULT TRUE,         -- 是否启用
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_targetlist_symbol ON TargetList(symbol);
+CREATE INDEX IF NOT EXISTS idx_targetlist_industry ON TargetList(industry);
+CREATE INDEX IF NOT EXISTS idx_targetlist_active ON TargetList(is_active);
+
+COMMENT ON TABLE TargetList IS '选股目标股票列表';
+COMMENT ON COLUMN TargetList.ts_code IS '股票代码（带交易所后缀，如000001.SZ）';
+COMMENT ON COLUMN TargetList.symbol IS '股票代码（纯数字，如000001）';
+COMMENT ON COLUMN TargetList.is_active IS '是否启用该股票进行选股';
